@@ -6,8 +6,8 @@ typedef struct{
 } bson_t;
 
 typedef struct{
-    char* msg;
-    int err_type;
+    char msg[1024];
+    int err_set;
 } err_t;
 
 
@@ -32,4 +32,8 @@ bson_get_val_double(bson_t* obj, char* key, err_t* err);
 int
 bson_get_val_int32(bson_t* obj, char* key, err_t* err);
 
+bson_t*
+bson_get_val_document(bson_t* obj, char* key, err_t* err);
 
+int
+bson_get_val_boolean(bson_t* obj, char* key, err_t* err);
