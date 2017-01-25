@@ -25,6 +25,18 @@ enum bson_type_id {
     BSON_MAXKEY = 0x7F
 };
 
+typedef struct{
+    enum bson_type_id type_id;
+    char* e_name;
+    char* data;
+} bson_elem_t;
+
+
+typedef struct{
+    bson_elem_t curr_elem;
+} bson_iter_t;
+
+
 /* 
  * Given a buffer pointed to by buf, decode the first 4 bytes as a little endian 32-bit
  * integer, and return that value as an int.
@@ -62,135 +74,182 @@ bson_t* bson_decode(char* buf){
     
 }
 
-char* bson_encode(bson_t* obj, int* len){
+char* 
+bson_encode(bson_t* obj, int* len){
     char* data = (char*) malloc(obj->data_len);
     memcpy(data, obj->data, obj->data_len);
     *len = obj->data_len;
     return data;
 }
 
+int
+_bson_element_size_bytes(bson_elem_t* element){
+
+    // "\x<TYPE>" e_name
+    int header_size = strlen(element->e_name)+2;
+    int len;
+
+    // Element data size (type-dependent).
+    switch(element->type_id){
+
+        case BSON_DOUBLE:
+            //double = 8 bytes
+            return header_size + 8;
+            break;
+
+        case BSON_STRING:
+            // string  ::= int32 (byte*) "\x00"
+            len = decode_little_endian_int32(element->data);
+            return header_size + len + 4;
+            break;
+
+        case BSON_DOCUMENT:
+        case BSON_ARRAY:
+            len = decode_little_endian_int32(element->data);
+            return header_size + len;
+            break;
+
+        case BSON_BINARY:
+            len = decode_little_endian_int32(element->data);
+            return header_size + len;
+            break;
+
+        case BSON_OBJECTID:
+            // ObjectId: "\x07" e_name (byte*12)
+            return header_size + 12;
+            break;
+
+        case BSON_BOOLEAN:
+            return header_size + 1;
+            break;
+
+        case BSON_UTC:
+            //UTC Timestamp: int64 = 8 bytes
+            return header_size + 8;
+            break;
+
+        case BSON_NULL:
+            break;
+
+        case BSON_REGEX:
+            //  Regex: "\x0B" e_name cstring cstring
+            len = strlen(element->data)+1;
+            return header_size + len + (strlen(element->data + len)+1);
+            break;
+
+        case BSON_JSCODE:
+            len = decode_little_endian_int32(element->data);
+            return header_size + 4 + len;
+            break;
+
+        case BSON_JSCODEWSCOPE:
+            len = decode_little_endian_int32(element->data);
+            return header_size + 4 + len;
+            break;
+
+        case BSON_INT32:
+            //int32 = 4 bytes
+            return header_size + 4;
+            break;
+
+        case BSON_TIMESTAMP:
+            return header_size + 8;
+
+        case BSON_INT64:
+            return header_size + 8;
+
+        case BSON_DEC128:
+            return header_size + 16;
+
+        case BSON_MINKEY:
+        case BSON_MAXKEY:
+            return header_size;
+            break;
+
+        default:
+            return -1;
+            break;
+    }
+    return -1;
+}
+
 
 /*
- * Given a starting position, pointing to an element in a raw BSON byte array, find the next element 
- * whose element name matches @key, and return a pointer to the element value's position in the byte 
- * array. If no element with given key name is found, returns NULL.
+ * Given a BSON object, find the first element 
+ * whose name matches @key, and return the element as a bson_elem_t object. If no element with given key name is found, returns NULL.
  */
-char* _bson_find_next_by_key(char* start_pos, char* key){
+bson_elem_t* 
+_bson_find_by_key(bson_t* obj, char* key){
     
-    char* arr_pos = start_pos;
+    char* arr_pos = obj->data + 4;
     int end_of_doc = 0;
     int matched = -1;
     int len = 0;
     
     while(!end_of_doc){
-        enum bson_type_id elem_type = *arr_pos;
 
-        //Check e_name
-        matched = strcmp(arr_pos+1, key);
+        bson_elem_t* element = (bson_elem_t*)malloc(sizeof(bson_elem_t));
+
+        element->type_id = *arr_pos;
+        
+        char* e_name = arr_pos + 1;
+        int e_name_len = strlen(e_name);
+        element->e_name = (char*)malloc(e_name_len+1);
+        memcpy(element->e_name, e_name, e_name_len+1); // replace with strcpy??
+
+
+        //Copy data from BSON buffer into element object
+        int elem_size = _bson_element_size_bytes(element);
+        element->data = (char*) malloc(elem_size);
+        memcpy(element->data, arr_pos + e_name_len + 1, elem_size);
+
+        // Check if we found the key.
+        matched = strcmp(element->e_name, key);
 
         if(matched==0){
-            return arr_pos;
+            return element;
         }
-        
-        /* 
-         * Move the pointer to the next document in byte array. The number of bytes to skip 
-         * ahead is dependent on the element type, so we need specific skip-ahead logic 
-         * for each  type.
-        */    
 
-        // Skip element type byte.
-        arr_pos+=1;
+        // Skip ahead to the next element.
+        arr_pos += elem_size;
 
-        // Skip e_name bytes.
-        int e_name_len = strlen(arr_pos);
-        arr_pos += (e_name_len+1);
-
-        // Skip element value bytes (type-dependent).
-        switch(elem_type){
-
-            case BSON_DOUBLE:
-                //double = 8 bytes
-                arr_pos += 8;
-                break;
-
-            case BSON_STRING:
-                // string  ::= int32 (byte*) "\x00"
-                len = decode_little_endian_int32(arr_pos);
-                arr_pos += (4+len);
-                break;
-
-            case BSON_DOCUMENT:
-            case BSON_ARRAY:
-                len = decode_little_endian_int32(arr_pos);
-                arr_pos += len;
-                break;
-
-            case BSON_BINARY:
-                len = decode_little_endian_int32(arr_pos);
-                arr_pos += len;
-                break;
-
-            case BSON_OBJECTID:
-                // ObjectId: "\x07" e_name (byte*12)
-                arr_pos += 12;
-                break;
-
-            case BSON_BOOLEAN:
-                arr_pos += 1;
-                break;
-
-            case BSON_UTC:
-                //UTC Timestamp: int64 = 8 bytes
-                arr_pos += 8;
-                break;
-
-            case BSON_NULL:
-                break;
-
-            case BSON_REGEX:
-                //  Regex: "\x0B" e_name cstring cstring
-                arr_pos += (strlen(arr_pos)+1);
-                arr_pos += (strlen(arr_pos)+1);
-                break;
-
-            case BSON_JSCODE:
-                len = decode_little_endian_int32(arr_pos);
-                arr_pos += (4+len);
-                break;
-
-            case BSON_JSCODEWSCOPE:
-                len = decode_little_endian_int32(arr_pos);
-                arr_pos += (4+len);
-                break;
-
-            case BSON_INT32:
-                //int32 = 4 bytes
-                arr_pos += 4;
-                break;
-
-            case BSON_TIMESTAMP:
-                arr_pos += 8;
-
-            case BSON_INT64:
-                arr_pos += 8;
-
-            case BSON_DEC128:
-                arr_pos += 16;
-
-            case BSON_MINKEY:
-            case BSON_MAXKEY:
-                break;
-
-            default:
-                assert("BSON type unknown!" == NULL);
-        }
     } 
 
-    if(matched!=0){
-        return NULL;
+    return NULL; 
+}
+
+char*
+_bson_element_to_string(bson_elem_t* element){
+    return NULL;
+}
+
+char* 
+bson_to_json(bson_t* obj, err_t* err){
+    
+    char* arr_pos = obj->data + 4;
+    int end_of_doc = 0;
+
+    while(!end_of_doc){
+        bson_elem_t* element = (bson_elem_t*)malloc(sizeof(bson_elem_t));
+
+        element->type_id = *arr_pos;
+        
+        char* e_name = arr_pos + 1;
+        int e_name_len = strlen(e_name);
+        element->e_name = (char*)malloc(e_name_len+1);
+        memcpy(element->e_name, e_name, e_name_len+1);
+
+        element->data = arr_pos + e_name_len + 1;
+
+        // Implement this!
+        /* _bson_element_to_string(element); */
+
+        // Skip ahead to the next element.
+        arr_pos += _bson_element_size_bytes(element);
+
     }
 
-    return arr_pos; 
+    return NULL;
 }
 
 
@@ -201,30 +260,24 @@ bson_get_val_string(bson_t* obj, char* key, err_t* err, int* len){
      *   string  ::= int32 (byte*) "\x00"
     */
 
-    char* elem_pos = _bson_find_next_by_key(obj->data + 4, key);
+    bson_elem_t* element = _bson_find_by_key(obj, key);
 
     // Check if found.
-    if(elem_pos==NULL){
+    if(element==NULL){
         strcpy(err->msg, "No key found.");
         return NULL;
     }
 
     // Check if correct BSON type.
-    if(elem_pos[0]!=BSON_STRING){
+    if(element->type_id!=BSON_STRING){
         strcpy(err->msg, "Unable to decode element as string.");
         return NULL;
     }
 
-    // Skip e_name bytes
-    elem_pos += (strlen(elem_pos)+1);
-
-    int str_len = decode_little_endian_int32(elem_pos);
-
-    // Move forward to raw string bytes
-    elem_pos+=4;
+    int str_len = decode_little_endian_int32(element->data);
 
     char* out_str = (char*) malloc(str_len+1);
-    memcpy(out_str, elem_pos, str_len+1);
+    memcpy(out_str, element->data + 4, str_len+1);
     *len = str_len;
 
     //Start at beginning of BSON doc, past length header
@@ -234,95 +287,81 @@ bson_get_val_string(bson_t* obj, char* key, err_t* err, int* len){
 double
 bson_get_val_double(bson_t* obj, char* key, err_t* err){
 
-    char* elem_pos = _bson_find_next_by_key(obj->data + 4, key);
+    bson_elem_t* element = _bson_find_by_key(obj, key);
 
     // Check if found.
-    if(elem_pos==NULL){
+    if(element==NULL){
         strcpy(err->msg, "No key found.");
         return -1;
     }
 
     // Check if correct BSON type.
-    if(elem_pos[0]!=BSON_DOUBLE){
+    if(element->type_id!=BSON_DOUBLE){
         strcpy(err->msg, "Unable to decode element as double.");
         return -1;
     }
 
-
-    // Skip e_name bytes
-    elem_pos += (strlen(elem_pos)+1);
-
-    return decode_little_endian_double(elem_pos);
+    return decode_little_endian_double(element->data);
 }
 
 int
 bson_get_val_int32(bson_t* obj, char* key, err_t* err){
 
-    char* elem_pos = _bson_find_next_by_key(obj->data + 4, key);
+    bson_elem_t* element = _bson_find_by_key(obj, key);
 
     // Check if found. 
-    if(elem_pos==NULL){
+    if(element==NULL){
         strcpy(err->msg, "No key found.");
         return -1;
     }
 
     // Check if correct BSON type. 
-    if(elem_pos[0]!=BSON_INT32){
+    if(element->type_id!=BSON_INT32){
         strcpy(err->msg, "Unable to decode element as int32.");
         return -1;
     }
 
-    // Skip e_name bytes
-    elem_pos += (strlen(elem_pos)+1);
-
-    return decode_little_endian_int32(elem_pos);
+    return decode_little_endian_int32(element->data);
 }
 
 bson_t*
 bson_get_val_document(bson_t* obj, char* key, err_t* err){
 
-    char* elem_pos = _bson_find_next_by_key(obj->data + 4, key);
+    bson_elem_t* element = _bson_find_by_key(obj, key);
 
     // Check if found.
-    if(elem_pos==NULL){
+    if(element==NULL){
         strcpy(err->msg, "No key found.");
         return NULL;
     }
 
     // Check if correct BSON type. 
-    if(elem_pos[0]!=BSON_DOCUMENT){
+    if(element->type_id!=BSON_DOCUMENT){
         strcpy(err->msg, "Unable to decode element as document.");
         return NULL;
     }
 
-    // Skip e_name bytes
-    elem_pos += (strlen(elem_pos)+1);
-    err->err_set = 0;
-
-    return bson_decode(elem_pos);
+    return bson_decode(element->data);
 }
 
 int
 bson_get_val_boolean(bson_t* obj, char* key, err_t* err){
 
-    char* elem_pos = _bson_find_next_by_key(obj->data + 4, key);
+    bson_elem_t* element = _bson_find_by_key(obj, key);
 
     // Check if found. 
-    if(elem_pos==NULL){
+    if(element==NULL){
         strcpy(err->msg, "No key found.");
         return -1;
     }
 
     // Check if correct BSON type. 
-    if(elem_pos[0]!=BSON_BOOLEAN){
+    if(element->type_id!=BSON_BOOLEAN){
         strcpy(err->msg, "Unable to decode element as boolean.");
         return -1;
     }
 
-    // Skip e_name bytes
-    elem_pos += (strlen(elem_pos)+1);
-
-    return (int)(*elem_pos);
+    return (int)(*element->data);
 }
 
 

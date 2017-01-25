@@ -16,12 +16,18 @@ typedef struct{
  */
 bson_t* bson_decode(char* buf);
 
+
 /* 
  * Takes a BSON object and returns a buffer containing the raw BSON object bytes. Sets @len to
  * the size of the returned buffer. Memory for this buffer is owned by the callee.
  */
 char* bson_encode(bson_t* obj, int* len);
 
+
+/*
+ * Takes a BSON object and returns its representation as a JSON string.
+ */
+char* bson_to_json(bson_t* obj, err_t* err);
 
 char* 
 bson_get_val_string(bson_t* obj, char* key, err_t* err, int* len);
