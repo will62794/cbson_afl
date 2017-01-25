@@ -25,34 +25,6 @@ enum bson_type_id {
     BSON_MAXKEY = 0x7F
 };
 
-bson_t* bson_decode(char* buf){
-    bson_t* obj = malloc(sizeof(bson_t));
-
-    // Decode little endian int32 document length
-    obj->data_len = 0;
-    obj->data_len  |= buf[0];
-    obj->data_len  |= buf[1]<<8;
-    obj->data_len  |= buf[2]<<16;
-    obj->data_len  |= buf[3]<<24;
-
-    if(obj->data_len < 4){
-        assert("Invalid BSON document size." == NULL);
-    }
-
-    obj->data = (char*) malloc(obj->data_len);
-    memcpy(obj->data, buf, obj->data_len);
-
-    return obj;
-    
-}
-
-char* bson_encode(bson_t* obj, int* len){
-    char* data = (char*) malloc(obj->data_len);
-    memcpy(data, obj->data, obj->data_len);
-    *len = obj->data_len;
-    return data;
-}
-
 /* 
  * Given a buffer pointed to by buf, decode the first 4 bytes as a little endian 32-bit
  * integer, and return that value as an int.
@@ -72,6 +44,31 @@ double decode_little_endian_double(char* buf){
     memcpy(&val, buf, 8);
     return val;
 }
+
+bson_t* bson_decode(char* buf){
+    bson_t* obj = malloc(sizeof(bson_t));
+
+    // Decode little endian int32 document length
+    obj->data_len = decode_little_endian_int32(buf);
+
+    if(obj->data_len < 4){
+        assert("Invalid BSON document size." == NULL);
+    }
+
+    obj->data = (char*) malloc(obj->data_len);
+    memcpy(obj->data, buf, obj->data_len);
+
+    return obj;
+    
+}
+
+char* bson_encode(bson_t* obj, int* len){
+    char* data = (char*) malloc(obj->data_len);
+    memcpy(data, obj->data, obj->data_len);
+    *len = obj->data_len;
+    return data;
+}
+
 
 /*
  * Given a starting position, pointing to an element in a raw BSON byte array, find the next element 
