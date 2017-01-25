@@ -10,4 +10,4 @@ And to spin up the AFL fuzzer, do
 
 `make fuzzrun`
 
-...See if you can find any bugs in my implementation!
+See what bugs you can find!
