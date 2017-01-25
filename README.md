@@ -4,4 +4,10 @@ My own toy implementation of BSON in C. Intended mainly as a programming/design 
 
 To compile the AFL fuzzing harness, simply run
 
-`code`
+`make fuzz`
+
+And to spin up the AFL fuzzer, do
+
+`make fuzzrun`
+
+...See if you can find any bugs in my implementation!
