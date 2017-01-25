@@ -10,4 +10,4 @@ And to spin up the AFL fuzzer, do
 
 `make fuzzrun`
 
-See what bugs you can find!
+Note, you will need to have AFL installed in order to run the above targets. You can get it here [http://lcamtuf.coredump.cx/afl/]. Happy fuzzing!
