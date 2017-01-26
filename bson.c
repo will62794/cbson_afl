@@ -200,7 +200,7 @@ _bson_parse_element(char* elem_pos, int* len){
     int elem_size = _bson_element_data_size(elem_data, element->type_id);
     element->data = (char*) malloc(elem_size);
     memcpy(element->data, elem_data, elem_size); 
-    
+
 
     // Set total element size in bytes
     *len = 1 + e_name_len + 1 + elem_size;   
@@ -242,6 +242,7 @@ _bson_find_by_key(bson_t* obj, char* key){
 char*
 _bson_element_data_to_string(bson_elem_t* element){
     char* out_str;
+    char* err_str;
     char* strval;
     double dval;
     int ival;
@@ -277,8 +278,8 @@ _bson_element_data_to_string(bson_elem_t* element){
             break;
 
         default:
-            assert("BSON type unsupported!"==NULL);
-
+            fprintf(stderr, "BSON type id 0x%02x unsupported\n", element->type_id);
+            assert("BSON Type Error"==NULL);
     }
 
     return out_str;

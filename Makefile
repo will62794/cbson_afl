@@ -1,6 +1,3 @@
-default:
-	gcc -h
-
 test:
 	gcc -g bson.c test_bson.c -o test_bson
 
