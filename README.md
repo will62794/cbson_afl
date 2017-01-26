@@ -10,7 +10,9 @@ And to spin up the AFL fuzzer, do
 
 `make fuzzrun`
 
-Note, you will need to have AFL installed in order to run the above targets. You can get it here [http://lcamtuf.coredump.cx/afl/](). There is a single demo BSON testcase located in `testcases/` that can get you started, but feel free to add your own. The fuzzer is set up to exercise the BSON to JSON conversion function. You can see the simple harness in `fuzz_bson.c`. For triaging crashes discovered by the fuzzer, you can run 
+Note, you will need to have AFL installed in order to run the above targets. You can get it here [http://lcamtuf.coredump.cx/afl/](). There is a single demo BSON testcase located in `testcases/` that can get you started, but feel free to add your own. The fuzzer is set up to exercise the BSON to JSON conversion function. You can see the simple harness in `fuzz_bson.c`. 
+
+For diagnosing crashes discovered by the fuzzer, you can run 
 
 `make fuzzdebug`
 
