@@ -2,3 +2,4 @@
 test_bson
 bson_fuzzer
 *.dSYM
+findings/

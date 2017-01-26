@@ -188,22 +188,19 @@ _bson_parse_element(char* elem_pos, int* len){
 
     // Parse BSON type id.
     element->type_id = *elem_pos;
-    // printf("type_id:%02x\n", element->type_id);
     
     // Parse e_name.
     char* e_name = elem_pos + 1;
     int e_name_len = strlen(e_name);
     element->e_name = (char*)malloc(e_name_len+1);
     strcpy(element->e_name, e_name);
-    // printf("e_name:%s\n",element->e_name);
 
     // Parse element data.
     char* elem_data = e_name + e_name_len + 1;
     int elem_size = _bson_element_data_size(elem_data, element->type_id);
     element->data = (char*) malloc(elem_size);
     memcpy(element->data, elem_data, elem_size); 
-    // printf("elem_size:%d\n",elem_size);
-
+    
 
     // Set total element size in bytes
     *len = 1 + e_name_len + 1 + elem_size;   
