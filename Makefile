@@ -2,7 +2,7 @@ default:
 	gcc -h
 
 test:
-	gcc bson.c test_bson.c -o test_bson
+	gcc -g bson.c test_bson.c -o test_bson
 
 fuzz:
 	afl-clang bson.c fuzz_bson.c -o bson_fuzzer
