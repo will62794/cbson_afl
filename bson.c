@@ -4,6 +4,8 @@
 
 #include "bson.h"
 
+#define MIN_BSON_DOC_SIZE 5
+
 enum bson_type_id {
     BSON_DOUBLE = 0x01,
     BSON_STRING = 0x02,
@@ -47,6 +49,12 @@ int decode_little_endian_int32(char* buf){
     return val;
 }
 
+long decode_little_endian_int64(char* buf){
+    long val = 0;
+    memcpy(&val, buf, 8);
+    return val;
+}
+
 /* 
  * Given a buffer pointed to by buf, decode the first 8 bytes as a little endian 64-bit
  * floating point, and return that value as a double.
@@ -57,21 +65,33 @@ double decode_little_endian_double(char* buf){
     return val;
 }
 
-bson_t* bson_decode(char* buf){
+bson_t* bson_decode(char* buf, int len){
+
+    if(len < MIN_BSON_DOC_SIZE){
+        return NULL;
+        assert("Invalid BSON document size." == NULL);
+    }
+
     bson_t* obj = malloc(sizeof(bson_t));
 
     // Decode little endian int32 document length
     obj->data_len = decode_little_endian_int32(buf);
 
-    if(obj->data_len < 4){
-        assert("Invalid BSON document size." == NULL);
+    if(obj->data_len != len){
+        return NULL;
+        assert("BSON document size doesn't match buffer size." == NULL);
+    }
+
+    if(buf[len-1]!=0){
+        return NULL;
+        assert("BSON document does not contain trailing NULL byte." == NULL);
     }
 
     obj->data = (char*) malloc(obj->data_len);
     memcpy(obj->data, buf, obj->data_len);
 
     return obj;
-    
+
 }
 
 char* 
@@ -201,7 +221,6 @@ _bson_parse_element(char* elem_pos, int* len){
     element->data = (char*) malloc(elem_size);
     memcpy(element->data, elem_data, elem_size); 
 
-
     // Set total element size in bytes
     *len = 1 + e_name_len + 1 + elem_size;   
 
@@ -246,26 +265,30 @@ _bson_element_data_to_string(bson_elem_t* element){
     char* strval;
     double dval;
     int ival;
+    bson_t* obj;
+    long lval;
     err_t err;
 
     switch(element->type_id){
         case BSON_DOUBLE:
-            dval = decode_little_endian_double(element->data);
-            asprintf(&out_str, "%f", dval);
+            asprintf(&out_str, "%f", decode_little_endian_double(element->data));
             break;
 
         case BSON_STRING:
-            strval = element->data+4;
-            asprintf(&out_str, "\"%s\"", strval);
+            asprintf(&out_str, "\"%s\"", element->data+4);
             break;
 
         case BSON_DOCUMENT:
-            out_str = bson_to_json(bson_decode(element->data), &err);
+            obj = bson_decode(element->data, decode_little_endian_int32(element->data));
+            out_str = bson_to_json(obj, &err);
             break;
 
         case BSON_INT32:
-            ival = decode_little_endian_int32(element->data);
-            asprintf(&out_str, "%d", ival);
+            asprintf(&out_str, "%d", decode_little_endian_int32(element->data));
+            break;
+
+        case BSON_INT64:
+            asprintf(&out_str, "%ld", decode_little_endian_int64(element->data));
             break;
 
         case BSON_BOOLEAN:
@@ -276,10 +299,15 @@ _bson_element_data_to_string(bson_elem_t* element){
                 asprintf(&out_str, "%s", "false");
             }
             break;
+        
+        case BSON_UTC:
+            asprintf(&out_str, "%ld", decode_little_endian_int64(element->data));
+
+        case BSON_NULL:
+            asprintf(&out_str, "%s", "null");
 
         default:
-            fprintf(stderr, "BSON type id 0x%02x unsupported\n", element->type_id);
-            assert("BSON Type Error"==NULL);
+            return NULL;
     }
 
     return out_str;
@@ -289,10 +317,8 @@ char*
 bson_to_json(bson_t* obj, err_t* err){
     
     char* arr_base_pos = obj->data + 4;
+    char* json_str = (char*)malloc(0);
     int arr_offset = 0;
-    char* json_str = (char*)malloc(1);
-    int curr_str_size;
-    int end_of_doc = 0;
     int elem_size;
 
     // document ::= int32 e_list "\x00"
@@ -301,10 +327,18 @@ bson_to_json(bson_t* obj, err_t* err){
 
         char* elem_str;
         char* fmt = ",\"%s\":%s";
-        char* data_str = _bson_element_data_to_string(element); 
+        char* data_str = _bson_element_data_to_string(element);
+
+        // Failure to parse element to string
+        if(data_str==NULL){
+            asprintf(&(err->msg), "BSON type id 0x%02x unsupported", element->type_id);
+            err->err_set=1;
+            return NULL;
+        }
+
         asprintf(&elem_str, fmt, element->e_name, data_str);
         
-        //Append string
+        // Append string.
         json_str = realloc(json_str, strlen(json_str)+strlen(elem_str)+1);
         strcat(json_str, elem_str);
 
@@ -312,13 +346,16 @@ bson_to_json(bson_t* obj, err_t* err){
         arr_offset += elem_size;
     }
 
-    // Quick hack to get rid of leading command and add curly brace at same time :)
+    // Quick hack to get rid of leading comma and add curly brace at same time :)
     json_str[0]='{';
 
     // Append final curly brace.
     json_str = realloc(json_str, strlen(json_str)+2);
     strcat(json_str, "}");
     
+    // Success
+    err->err_set=0;
+
     return json_str;
 }
 
@@ -411,7 +448,7 @@ bson_get_val_document(bson_t* obj, char* key, err_t* err){
         return NULL;
     }
 
-    return bson_decode(element->data);
+    return bson_decode(element->data, decode_little_endian_int32(element->data));
 }
 
 int
@@ -432,6 +469,67 @@ bson_get_val_boolean(bson_t* obj, char* key, err_t* err){
     }
 
     return (int)(*element->data);
+}
+
+int
+bson_get_val_null(bson_t* obj, char* key, err_t* err){
+
+    bson_elem_t* element = _bson_find_by_key(obj, key);
+
+    // Check if found. 
+    if(element==NULL){
+        strcpy(err->msg, "No key found.");
+        return -1;
+    }
+
+    // Check if correct BSON type. 
+    if(element->type_id!=BSON_NULL){
+        strcpy(err->msg, "Unable to decode element as null.");
+        return -1;
+    }
+
+    return 0;
+}
+
+
+long
+bson_get_val_utc(bson_t* obj, char* key, err_t* err){
+
+    bson_elem_t* element = _bson_find_by_key(obj, key);
+
+    // Check if found. 
+    if(element==NULL){
+        strcpy(err->msg, "No key found.");
+        return -1;
+    }
+
+    // Check if correct BSON type. 
+    if(element->type_id!=BSON_UTC){
+        strcpy(err->msg, "Unable to decode element as UTC datetime.");
+        return -1;
+    }
+
+    return decode_little_endian_int64(element->data);
+}
+
+long
+bson_get_val_int64(bson_t* obj, char* key, err_t* err){
+
+    bson_elem_t* element = _bson_find_by_key(obj, key);
+
+    // Check if found. 
+    if(element==NULL){
+        strcpy(err->msg, "No key found.");
+        return -1;
+    }
+
+    // Check if correct BSON type. 
+    if(element->type_id!=BSON_UTC){
+        strcpy(err->msg, "Unable to decode element as int64.");
+        return -1;
+    }
+
+    return decode_little_endian_int64(element->data);
 }
 
 

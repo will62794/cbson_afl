@@ -17,7 +17,10 @@ int main(int argc, char const *argv[])
     fclose(fp);
 
     err_t err;
-    bson_t* obj = bson_decode(bson_bytes);
+    bson_t* obj = bson_decode(bson_bytes, (int)num_bytes);
+    if(obj==NULL){
+        return 0;
+    }
     char* json_str = bson_to_json(obj, &err);
 
 

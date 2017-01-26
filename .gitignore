@@ -1,5 +1,6 @@
 .DS_Store
 test_bson
 bson_fuzzer
+bson_fuzzer_debug
 *.dSYM
 findings/
