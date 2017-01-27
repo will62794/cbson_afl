@@ -12,6 +12,6 @@ And to spin up the AFL fuzzer, do
 
 Note, you will need to have AFL installed in order to run the above targets. You can get it here [http://lcamtuf.coredump.cx/afl/](). There is a single testcase located in `testcases/` that can get you started, but feel free to add your own. The fuzzer is set up to exercise the BSON to JSON conversion function. You can see the simple harness in `fuzz_bson.c`. 
 
-For diagnosing crashes discovered by the fuzzer, you can use the `bson_fuzzer_debug` binary, which is just the test harness compiled with debug symbols, allowing you to run it through gdb for crash diagnosis. The `afl_triage.sh` script will run any found crash testcases through the harness and show the output.
+For diagnosing crashes discovered by the fuzzer, you can use the `fuzz_bson_debug` binary, which is just the test harness compiled with debug symbols, allowing you to run it through gdb for crash diagnosis. The `afl_triage.sh` script will run any found crash testcases through the harness and show the output.
 
 Happy fuzzing!
