@@ -14,7 +14,7 @@ typedef struct{
 /* 
  * Serializes a raw data buffer into a BSON object. Returns NULL on failure.
  */
-bson_t* bson_decode(char* buf, int len);
+bson_t* bson_decode(char* buf, int len, err_t* err);
 
 
 /* 

@@ -39,6 +39,12 @@ typedef struct{
 } bson_iter_t;
 
 
+void 
+_bson_set_err(err_t* err, char* msg){
+    asprintf(&(err->msg), "%s", msg);
+    err->err_set=1;
+}
+
 /* 
  * Given a buffer pointed to by buf, decode the first 4 bytes as a little endian 32-bit
  * integer, and return that value as an int.
@@ -65,11 +71,11 @@ double decode_little_endian_double(char* buf){
     return val;
 }
 
-bson_t* bson_decode(char* buf, int len){
+bson_t* bson_decode(char* buf, int len, err_t* err){
 
     if(len < MIN_BSON_DOC_SIZE){
+        _bson_set_err(err, "Invalid BSON document size");
         return NULL;
-        assert("Invalid BSON document size." == NULL);
     }
 
     bson_t* obj = malloc(sizeof(bson_t));
@@ -78,13 +84,13 @@ bson_t* bson_decode(char* buf, int len){
     obj->data_len = decode_little_endian_int32(buf);
 
     if(obj->data_len != len){
+        _bson_set_err(err, "BSON document size doesn't match buffer size.");
         return NULL;
-        assert("BSON document size doesn't match buffer size." == NULL);
     }
 
     if(buf[len-1]!=0){
+        _bson_set_err(err, "BSON document does not contain trailing NULL byte.");
         return NULL;
-        assert("BSON document does not contain trailing NULL byte." == NULL);
     }
 
     obj->data = (char*) malloc(obj->data_len);
@@ -200,7 +206,8 @@ _bson_element_data_size(char* element_data, enum bson_type_id type_id){
 
 /* 
  * Given a pointer to an element in a BSON byte array, parse the element bytes into a bson_elem_t struct. Sets @len
-   to the total length of the raw element in bytes (useful for jumping to next element in BSON document).
+   to the total length of the raw element in bytes (useful for jumping to next element in BSON document). Returns
+   NULL if it fails to parse the element.
 */
 bson_elem_t*
 _bson_parse_element(char* elem_pos, int* len){
@@ -218,6 +225,12 @@ _bson_parse_element(char* elem_pos, int* len){
     // Parse element data.
     char* elem_data = e_name + e_name_len + 1;
     int elem_size = _bson_element_data_size(elem_data, element->type_id);
+    
+    // Unknown element type
+    if(elem_size==-1){
+        return NULL;
+    }
+
     element->data = (char*) malloc(elem_size);
     memcpy(element->data, elem_data, elem_size); 
 
@@ -279,7 +292,7 @@ _bson_element_data_to_string(bson_elem_t* element){
             break;
 
         case BSON_DOCUMENT:
-            obj = bson_decode(element->data, decode_little_endian_int32(element->data));
+            obj = bson_decode(element->data, decode_little_endian_int32(element->data), &err);
             out_str = bson_to_json(obj, &err);
             break;
 
@@ -324,6 +337,11 @@ bson_to_json(bson_t* obj, err_t* err){
     // document ::= int32 e_list "\x00"
     while(5 + arr_offset < obj->data_len){
         bson_elem_t* element = _bson_parse_element(arr_base_pos + arr_offset, &elem_size);
+
+        if(element==NULL){
+            _bson_set_err(err, "Unable to parse BSON element");
+            return NULL;
+        }
 
         char* elem_str;
         char* fmt = ",\"%s\":%s";
@@ -448,7 +466,7 @@ bson_get_val_document(bson_t* obj, char* key, err_t* err){
         return NULL;
     }
 
-    return bson_decode(element->data, decode_little_endian_int32(element->data));
+    return bson_decode(element->data, decode_little_endian_int32(element->data), err);
 }
 
 int

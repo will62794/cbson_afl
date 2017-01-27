@@ -3,9 +3,10 @@
 #include <string.h>
 
 void test_bson_decode(){
+    err_t err;
 
     char data[] = {0x08, 0x00, 0x00, 0x00, 0x04, 0x04, 0x04, 0x00};
-    bson_t* obj = bson_decode(data, 8);
+    bson_t* obj = bson_decode(data, 8, &err);
 
     assert(obj->data_len==8);
     for(int i=0;i<8;i++){
@@ -23,7 +24,9 @@ void test_bson_get_val_string(){
         0x06, 0x00, 0x00, 0x00, 'w', 'o', 'r', 'l','d', 0x00, // field value
         0x00 
     };
-    bson_t* obj = bson_decode(data, 22);
+
+    err_t err;
+    bson_t* obj = bson_decode(data, 22, &err);
 
     int len;
     char* str = bson_get_val_string(obj, "hello", NULL, &len);
@@ -37,6 +40,7 @@ void test_bson_get_vals(){
     /*
         {"hello":"world", "william":5, "age":1.234}
     */
+    err_t err;
 
     char data[] = {
       0x30, 0x00, 0x00, 0x00, 0x02, 0x68, 0x65, 0x6c, 0x6c, 0x6f, 0x00, 0x06,
@@ -45,11 +49,9 @@ void test_bson_get_vals(){
       0x67, 0x65, 0x00, 0x58, 0x39, 0xb4, 0xc8, 0x76, 0xbe, 0xf3, 0x3f, 0x00
     };
 
-    bson_t* obj = bson_decode(data, 48);
+    bson_t* obj = bson_decode(data, 48, &err);
 
     int len;
-    err_t err;
-
     char* str = bson_get_val_string(obj, "hello", NULL, &len);
     assert(strcmp(str,"world")==0);
 
@@ -88,7 +90,8 @@ void test_bson_to_json(){
       0x00
     };
 
-    obj = bson_decode(data, 48);
+    
+    obj = bson_decode(data, 48, &err);
     json_str = bson_to_json(obj, &err);
     assert(strcmp(json_str,"{\"hello\":\"world\",\"william\":5,\"age\":1.234000}")==0);
 
@@ -109,7 +112,7 @@ void test_bson_to_json(){
 
     unsigned int len = 76;
 
-    obj = bson_decode(data_embedded_doc, 76);
+    obj = bson_decode(data_embedded_doc, 76, &err);
     json_str = bson_to_json(obj, &err);
     assert(strcmp(json_str, "{\"height\":78,\"customer\":true,\"name\":{\"first\":\"William\",\"last\":\"Schultz\"}}")==0);
 
